@@ -1,0 +1,26 @@
+ARG BASE_JDK_IMAGE=mcr.microsoft.com/openjdk/jdk:25-ubuntu
+ARG BASE_JRE_IMAGE=eclipse-temurin:25-jre-alpine
+ARG IMAGE_NAME=spring-boot-app
+#Stage 1: Build the application using Maven
+FROM ${BASE_JDK_IMAGE} AS dependencies
+RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY pom.xml .
+RUN mvn dependency:go-offline
+#Stage 2: Build the application
+FROM dependencies AS builder
+COPY . .
+RUN mvn -B package --no-transfer-progress -DskipTests
+#Stage 3: Create the final image
+FROM ${BASE_JRE_IMAGE} AS runtime
+ARG JAR_FILE=target/*.jar
+ARG IMAGE_VERSION=1.0.0
+WORKDIR /app
+COPY --from=builder /build/${JAR_FILE} app.jar
+EXPOSE 8080
+LABEL author="Sharif" \
+      org.opencontainers.image.title="Spring Boot Application" \
+      org.opencontainers.image.version="${IMAGE_VERSION}"\
+      org.opencontainers.image.description="A Spring Boot application running on JDK 25" \
+      org.opencontainers.image.licenses="MIT"
+ENTRYPOINT ["java","-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
